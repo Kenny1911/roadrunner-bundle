@@ -4,24 +4,26 @@ declare(strict_types=1);
 
 namespace Baldinof\RoadRunnerBundle\RoadRunnerBridge;
 
+use Baldinof\RoadRunnerBundle\RoadRunnerBridge\HttpFoundationWorker\ChainChunkSizeResolver;
+use Baldinof\RoadRunnerBundle\RoadRunnerBridge\HttpFoundationWorker\ChunkSizeResolver;
 use Spiral\RoadRunner\Http\HttpWorkerInterface;
 use Spiral\RoadRunner\Http\Request as RoadRunnerRequest;
 use Spiral\RoadRunner\WorkerInterface;
-use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request as SymfonyRequest;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 
 final class HttpFoundationWorker implements HttpFoundationWorkerInterface
 {
     private HttpWorkerInterface $httpWorker;
     private array $originalServer;
+    private ChunkSizeResolver $chunkSizeResolver;
 
-    public function __construct(HttpWorkerInterface $httpWorker)
+    public function __construct(HttpWorkerInterface $httpWorker, ChunkSizeResolver $chunkSizeResolver = new ChainChunkSizeResolver([]))
     {
         $this->httpWorker = $httpWorker;
         $this->originalServer = $_SERVER;
+        $this->chunkSizeResolver = $chunkSizeResolver;
     }
 
     public function waitRequest(): ?SymfonyRequest
@@ -37,30 +39,30 @@ final class HttpFoundationWorker implements HttpFoundationWorkerInterface
 
     public function respond(SymfonyResponse $response): void
     {
-        if ($response instanceof BinaryFileResponse && !$response->headers->has('Content-Range')) {
-            $content = file_get_contents($response->getFile()->getPathname());
-            if ($content === false) {
-                throw new \RuntimeException(\sprintf("Cannot read file '%s'", $response->getFile()->getPathname())); // TODO: custom error
-            }
-        } else {
-            if ($response instanceof StreamedResponse || $response instanceof BinaryFileResponse) {
-                $content = '';
-                ob_start(function ($buffer) use (&$content) {
-                    $content .= $buffer;
+        $chunkSize = $this->chunkSizeResolver->resolve($response);
 
-                    return '';
-                });
+        ob_start(function (string $buffer, int $phase) use ($response, $chunkSize) {
+            static $remains = '';
+            $remains .= $buffer;
 
-                $response->sendContent();
-                ob_end_clean();
+            $headers = ($phase & PHP_OUTPUT_HANDLER_START) ? $this->stringifyHeaders($response->headers->all()) : [];
+            $endOfStream = ($phase & PHP_OUTPUT_HANDLER_END) === PHP_OUTPUT_HANDLER_END;
+
+            if ($endOfStream) {
+                $body = $remains;
+                $remains = '';
             } else {
-                $content = (string) $response->getContent();
+                $bodyLength = intdiv(strlen($remains), $chunkSize) * $chunkSize;
+                $body = substr($remains, 0, $bodyLength);
+                $remains = substr($remains, $bodyLength);
             }
-        }
 
-        $headers = $this->stringifyHeaders($response->headers->all());
+            $this->httpWorker->respond($response->getStatusCode(), $body, $headers, $endOfStream);
 
-        $this->httpWorker->respond($response->getStatusCode(), $content, $headers);
+            return '';
+        }, $chunkSize);
+        $response->sendContent();
+        @ob_end_clean();
     }
 
     public function getWorker(): WorkerInterface
