@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Baldinof\RoadRunnerBundle\RoadRunnerBridge;
 
-use Baldinof\RoadRunnerBundle\RoadRunnerBridge\HttpFoundationWorker\ChainChunkSizeResolver;
 use Baldinof\RoadRunnerBundle\RoadRunnerBridge\HttpFoundationWorker\ChunkSizeResolver;
+use Baldinof\RoadRunnerBundle\RoadRunnerBridge\HttpFoundationWorker\DefaultChunkSizeResolver;
 use Spiral\RoadRunner\Http\HttpWorkerInterface;
 use Spiral\RoadRunner\Http\Request as RoadRunnerRequest;
 use Spiral\RoadRunner\WorkerInterface;
@@ -19,7 +19,7 @@ final class HttpFoundationWorker implements HttpFoundationWorkerInterface
     private array $originalServer;
     private ChunkSizeResolver $chunkSizeResolver;
 
-    public function __construct(HttpWorkerInterface $httpWorker, ChunkSizeResolver $chunkSizeResolver = new ChainChunkSizeResolver([]))
+    public function __construct(HttpWorkerInterface $httpWorker, ChunkSizeResolver $chunkSizeResolver = new DefaultChunkSizeResolver())
     {
         $this->httpWorker = $httpWorker;
         $this->originalServer = $_SERVER;
