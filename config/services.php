@@ -63,7 +63,14 @@ return static function (ContainerConfigurator $container) {
 
     // Bundle services
     $services->set(HttpFoundationWorkerInterface::class, HttpFoundationWorker::class)
-        ->args([service(HttpWorkerInterface::class)]);
+        ->args([
+            service(HttpWorkerInterface::class),
+            inline_service(HttpFoundationWorker\ChainChunkSizeResolver::class)
+                ->args([tagged_iterator('baldinof_road_runner.chunk_size_resolver')]),
+        ]);
+
+    $services->set(HttpFoundationWorker\DefaultChunkSizeResolver::class)
+        ->tag('baldinof_road_runner.chunk_size_resolver');
 
     $services->set(WorkerRegistryInterface::class, WorkerRegistry::class)
         ->public();
