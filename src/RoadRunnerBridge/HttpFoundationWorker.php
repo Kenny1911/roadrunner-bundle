@@ -41,23 +41,19 @@ final class HttpFoundationWorker implements HttpFoundationWorkerInterface
     {
         $chunkSize = $this->chunkSizeResolver->resolve($response);
 
-        ob_start(function (string $buffer, int $phase) use ($response, $chunkSize) {
-            static $remains = '';
-            $remains .= $buffer;
+        ob_start(function (string $buffer, int $phase) use ($response) {
+            $isFirst = ($phase & PHP_OUTPUT_HANDLER_START) === PHP_OUTPUT_HANDLER_START;
+            $isLast = ($phase & PHP_OUTPUT_HANDLER_END) === PHP_OUTPUT_HANDLER_END;
 
-            $headers = ($phase & PHP_OUTPUT_HANDLER_START) ? $this->stringifyHeaders($response->headers->all()) : [];
-            $endOfStream = ($phase & PHP_OUTPUT_HANDLER_END) === PHP_OUTPUT_HANDLER_END;
+            $headers = $isFirst ? $this->stringifyHeaders($response->headers->all()) : [];
+            $endOfStream = $isLast;
 
-            if ($endOfStream) {
-                $body = $remains;
-                $remains = '';
-            } else {
-                $bodyLength = intdiv(strlen($remains), $chunkSize) * $chunkSize;
-                $body = substr($remains, 0, $bodyLength);
-                $remains = substr($remains, $bodyLength);
+            // Skip, if empty buffer
+            if ('' === $buffer && !($isFirst || $isLast)) {
+                return '';
             }
 
-            $this->httpWorker->respond($response->getStatusCode(), $body, $headers, $endOfStream);
+            $this->httpWorker->respond($response->getStatusCode(), $buffer, $headers, $endOfStream);
 
             return '';
         }, $chunkSize);
