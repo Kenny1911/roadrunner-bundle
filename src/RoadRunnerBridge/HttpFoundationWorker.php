@@ -41,19 +41,26 @@ final class HttpFoundationWorker implements HttpFoundationWorkerInterface
     {
         $chunkSize = $this->chunkSizeResolver->resolve($response);
 
-        ob_start(function (string $buffer, int $phase) use ($response) {
-            $isFirst = ($phase & PHP_OUTPUT_HANDLER_START) === PHP_OUTPUT_HANDLER_START;
+        ob_start(function (string $buffer, int $phase) use ($response, $chunkSize) {
+            static $content = '';
+            $content .= $buffer;
+            static $isFirstRespond = true;
+
             $isLast = ($phase & PHP_OUTPUT_HANDLER_END) === PHP_OUTPUT_HANDLER_END;
 
-            $headers = $isFirst ? $this->stringifyHeaders($response->headers->all()) : [];
-            $endOfStream = $isLast;
-
-            // Skip, if empty buffer
-            if ('' === $buffer && !($isFirst || $isLast)) {
+            // Skip, if content size less, then chunk size
+            if (strlen($content) < $chunkSize && !$isLast) {
                 return '';
             }
 
-            $this->httpWorker->respond($response->getStatusCode(), $buffer, $headers, $endOfStream);
+            $this->httpWorker->respond(
+                status: $response->getStatusCode(),
+                body: $content,
+                headers: $isFirstRespond ? $this->stringifyHeaders($response->headers->all()) : [],
+                endOfStream: $isLast,
+            );
+            $isFirstRespond = false;
+            $content = '';
 
             return '';
         }, $chunkSize);

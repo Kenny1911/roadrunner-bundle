@@ -336,6 +336,23 @@ class HttpFoundationWorkerTest extends TestCase
             },
         ];
 
+        yield 'streamed response from callback 3' => [
+            new StreamedResponse(function() {
+                echo 'foo';
+                echo ' ';
+                echo 'bar baz';
+                echo ' ';
+                echo 'qux';
+            }),
+            1024 * 16,
+            function(RoadRunnerResponse $response): void {
+                $this->assertSame(200, $response->status);
+                $this->assertSame('foo bar baz qux', $response->content);
+                $this->assertCount(1, $response->chunks);
+                $this->assertSame(['foo bar baz qux'], $response->chunks);
+            },
+        ];
+
         yield 'streamed response from chunks' => [
             new StreamedResponse([
                 'foo',
@@ -348,8 +365,8 @@ class HttpFoundationWorkerTest extends TestCase
             function (RoadRunnerResponse $response): void {
                 $this->assertSame(200, $response->status);
                 $this->assertSame('foo bar baz qux', $response->content);
-                $this->assertCount(6, $response->chunks);
-                $this->assertSame(['foo', ' ', 'bar baz', ' ', 'qux', ''], $response->chunks);
+                $this->assertCount(4, $response->chunks);
+                $this->assertSame(['foo', ' bar baz', ' qux', ''], $response->chunks);
             },
         ];
 
@@ -361,12 +378,29 @@ class HttpFoundationWorkerTest extends TestCase
                 ' ',
                 'qux',
             ]),
-            16,
+            4,
             function (RoadRunnerResponse $response): void {
                 $this->assertSame(200, $response->status);
                 $this->assertSame('foo bar baz qux', $response->content);
-                $this->assertCount(6, $response->chunks);
-                $this->assertSame(['foo', ' ', 'bar baz', ' ', 'qux', ''], $response->chunks);
+                $this->assertCount(4, $response->chunks);
+                $this->assertSame(['foo ', 'bar baz', ' qux', ''], $response->chunks);
+            },
+        ];
+
+        yield 'streamed response from chunks 3' => [
+            new StreamedResponse([
+                'foo',
+                ' ',
+                'bar baz',
+                ' ',
+                'qux',
+            ]),
+            1024 * 16,
+            function (RoadRunnerResponse $response): void {
+                $this->assertSame(200, $response->status);
+                $this->assertSame('foo bar baz qux', $response->content);
+                $this->assertCount(1, $response->chunks);
+                $this->assertSame(['foo bar baz qux'], $response->chunks);
             },
         ];
 
